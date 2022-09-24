@@ -25,7 +25,7 @@ fn header_validation() {
 
 #[test]
 fn partial_load() {
-    let  buf = Cursor::new(vec![]);
+    let buf = Cursor::new(vec![]);
     let opts = Options::new(0, 100, 12000);
     let mut t = Table::new(&opts, &0_i128, buf).unwrap();
     t.insert(100, &10000).unwrap();
