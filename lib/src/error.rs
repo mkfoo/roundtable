@@ -10,6 +10,7 @@ pub enum Error {
     InvalidDpHash,
     InvalidDpCount,
     InvalidTimeStep,
+    InvalidStreamLen,
     UpdateTooEarly,
     UpdateTooLate,
     InvalidSkip,
@@ -29,6 +30,7 @@ impl fmt::Display for Error {
             InvalidDpHash => write!(f, "invalid datapoint hash value"),
             InvalidDpCount => write!(f, "dp count must be at least 2"),
             InvalidTimeStep => write!(f, "time step must be non-zero"),
+            InvalidStreamLen => write!(f, "i/o stream has wrong length"),
             UpdateTooEarly => write!(f, "update time is too early"),
             UpdateTooLate => write!(f, "update time is too late"),
             InvalidSkip => write!(f, "max fwd skip cannot be greater than dp count - 2"),
@@ -51,6 +53,7 @@ impl PartialEq for Error {
                 | (InvalidDpHash, InvalidDpHash)
                 | (InvalidDpCount, InvalidDpCount)
                 | (InvalidTimeStep, InvalidTimeStep)
+                | (InvalidStreamLen, InvalidStreamLen)
                 | (UpdateTooEarly, UpdateTooEarly)
                 | (UpdateTooLate, UpdateTooLate)
                 | (MaxSkipExceeded, MaxSkipExceeded)

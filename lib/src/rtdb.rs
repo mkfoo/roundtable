@@ -51,9 +51,42 @@ impl Header {
             return Err(InvalidDpCount);
         }
 
+        if opts.max_fwd_skip > self.dp_count - 2 {
+            return Err(Error::InvalidSkip);
+        }
+
         Ok(())
     }
 
+    fn check_stream_len<R: Read + Seek>(&self, stream: &mut R) -> Result<()> {
+        let len = stream.seek(SeekFrom::End(0)).map_err(Error::IoError)?;
+        stream.seek(SeekFrom::Start(0)).map_err(Error::IoError)?;
+
+        if self.get_earliest() > self.t_start {
+            return self.check_full_len(len)
+        } 
+
+        self.check_partial_len(len)
+    }
+
+    fn check_full_len(&self, len: u64) -> Result<()> {
+        if len != self.dp_count * self.dp_size + self.get_size() {
+            return Err(Error::InvalidStreamLen);
+        }
+
+        Ok(())
+    }
+
+    fn check_partial_len(&self, len: u64) -> Result<()> {
+        let dps = self.get_slot(self.t_updated) + 1;
+
+        if len < dps * self.dp_size || len > self.dp_count * self.dp_size + self.get_size() {
+            return Err(Error::InvalidStreamLen);
+        }
+
+        Ok(())
+    }
+     
     fn get_slot(&self, t_now: u64) -> u64 {
         let elapsed = t_now - self.t_start;
         let t_len = self.t_step * self.dp_count;
@@ -68,9 +101,10 @@ impl Header {
         let t1 = self
             .t_updated
             .saturating_sub(self.t_step * (self.dp_count - 1));
+        let t2 = t1 - t1 % self.t_step; 
 
-        if t1 > self.t_start {
-            t1
+        if t2 > self.t_start {
+            t2
         } else {
             self.t_start
         }
@@ -111,13 +145,27 @@ where
     pub fn new(opts: &Options, dp: &T, mut data: U) -> Result<Self> {
         let header = Header::new(opts, dp);
         header.validate(opts, dp)?;
-        
-        if opts.max_fwd_skip > header.dp_count - 2 {
-            return Err(Error::InvalidSkip);
-        }
-
+        data.seek(SeekFrom::Start(0)).map_err(Error::IoError)?;
         header.write_out(&mut data).map_err(Error::IoError)?;
         dp.write_out(&mut data).map_err(Error::IoError)?;
+        header.check_stream_len(&mut data)?;
+
+        Ok(Self {
+            max_skip: opts.max_fwd_skip,
+            skip_mode: opts.fwd_skip_mode,
+            header,
+            data,
+            buf: T::default(),
+            slot: 0,
+        })
+    }
+
+    pub fn load(opts: &Options, dp: &T, mut data: U) -> Result<Self> {
+        let mut header = Header::default();
+        data.seek(SeekFrom::Start(0)).map_err(Error::IoError)?;
+        header.read_in(&mut data).map_err(Error::IoError)?;
+        header.validate(opts, dp)?;
+        header.check_stream_len(&mut data)?;
 
         Ok(Self {
             max_skip: opts.max_fwd_skip,
@@ -244,5 +292,9 @@ where
         t_now.write_out(&mut self.data).map_err(Error::IoError)?;
         self.header.t_updated = t_now;
         Ok(())
+    }
+
+    pub fn into_inner(self) -> U {
+        self.data
     }
 }

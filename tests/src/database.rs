@@ -24,6 +24,55 @@ fn header_validation() {
 }
 
 #[test]
+fn partial_load() {
+    let  buf = Cursor::new(vec![]);
+    let opts = Options::new(0, 100, 12000);
+    let mut t = Table::new(&opts, &0_i128, buf).unwrap();
+    t.insert(100, &10000).unwrap();
+    t.insert(200, &20000).unwrap();
+    t.insert(300, &30000).unwrap();
+    assert_eq!(t.get(100).unwrap(), &10000);
+    assert_eq!(t.get(200).unwrap(), &20000);
+    assert_eq!(t.get(300).unwrap(), &30000);
+    let buf2 = t.into_inner();
+    let mut t2 = Table::load(&opts, &0_i128, buf2).unwrap();
+    assert_eq!(t2.get(100).unwrap(), &10000);
+    assert_eq!(t2.get(200).unwrap(), &20000);
+    assert_eq!(t2.get(300).unwrap(), &30000);
+}
+
+#[test]
+fn full_load() {
+    let mut v: Vec<u8> = vec![];
+    v.resize(40, 0_u8);
+    let buf = Cursor::new(v);
+    let opts = Options::new(0, 100, 1000);
+    let mut t = Table::new(&opts, &0_i32, buf).unwrap();
+    t.insert(100, &10000).unwrap();
+    t.insert(200, &20000).unwrap();
+    t.insert(300, &30000).unwrap();
+    t.insert(400, &40000).unwrap();
+    t.insert(500, &50000).unwrap();
+    t.insert(600, &60000).unwrap();
+    t.insert(700, &70000).unwrap();
+    t.insert(800, &80000).unwrap();
+    t.insert(900, &90000).unwrap();
+    t.insert(1000, &100000).unwrap();
+    assert_eq!(t.get(1000).unwrap(), &100000);
+    assert_eq!(t.get(200).unwrap(), &20000);
+    assert_eq!(t.get(300).unwrap(), &30000);
+    let buf2 = t.into_inner();
+    let mut t2 = Table::load(&opts, &0_i32, buf2).unwrap();
+    assert_eq!(t2.get(1000).unwrap(), &100000);
+    assert_eq!(t2.get(200).unwrap(), &20000);
+    assert_eq!(t2.get(300).unwrap(), &30000);
+    let mut v2 = t2.into_inner().into_inner();
+    v2.pop().unwrap();
+    let buf3 = Cursor::new(v2);
+    assert_eq!(Table::load(&opts, &0_i32, buf3).unwrap_err(), Error::InvalidStreamLen);
+}
+
+#[test]
 fn time_errors() {
     let t_start = 1000;
     let t_step = 100;
