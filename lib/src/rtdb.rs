@@ -16,19 +16,19 @@ super::datapoint! {
 }
 
 impl Header {
-    pub fn new<T: DataPoint>(dp: &T, dp_count: u64, t_start: u64, t_step: u64) -> Self {
+    pub fn new<T: DataPoint>(opts: &Options, dp: &T) -> Self {
         Self {
             magic: RTDB,
             dp_size: dp.get_size(),
             dp_hash: dp.get_hash(),
-            dp_count,
-            t_start,
-            t_step,
-            t_updated: t_start,
+            dp_count: opts.t_total.checked_div(opts.t_step).unwrap_or(0_u64),
+            t_start: opts.t_start,
+            t_step: opts.t_step,
+            t_updated: opts.t_start,
         }
     }
 
-    pub fn validate<T: DataPoint>(&self, dp: &T) -> Result<()> {
+    pub fn validate<T: DataPoint>(&self, opts: &Options, dp: &T) -> Result<()> {
         use Error::*;
 
         if self.magic != RTDB {
@@ -39,16 +39,16 @@ impl Header {
             return Err(InvalidDpSize);
         }
 
-        if self.dp_hash != dp.get_hash() {
+        if !opts.ignore_hash && self.dp_hash != dp.get_hash() {
             return Err(InvalidDpHash);
-        }
-
-        if self.dp_count == 0 {
-            return Err(InvalidDpCount);
         }
 
         if self.t_step == 0 {
             return Err(InvalidTimeStep);
+        }
+
+        if self.dp_count < 2 {
+            return Err(InvalidDpCount);
         }
 
         Ok(())
@@ -108,16 +108,14 @@ where
     T: DataPoint + Copy + Default,
     U: Read + Write + Seek + Sized,
 {
-    pub fn new(
-        opts: Options,
-        dp_count: u64,
-        t_start: u64,
-        t_step: u64,
-        dp: &T,
-        mut data: U,
-    ) -> Result<Self> {
-        let header = Header::new(dp, dp_count, t_start, t_step);
-        header.validate(dp)?;
+    pub fn new(opts: &Options, dp: &T, mut data: U) -> Result<Self> {
+        let header = Header::new(opts, dp);
+        header.validate(opts, dp)?;
+        
+        if opts.max_fwd_skip > header.dp_count - 2 {
+            return Err(Error::InvalidSkip);
+        }
+
         header.write_out(&mut data).map_err(Error::IoError)?;
         dp.write_out(&mut data).map_err(Error::IoError)?;
 
@@ -160,7 +158,7 @@ where
         use FwdSkipMode::*;
 
         if skip > self.max_skip {
-            return Err(Error::UpdateTooLate);
+            return Err(Error::MaxSkipExceeded);
         }
 
         self.seek_to(self.header.t_updated)?;

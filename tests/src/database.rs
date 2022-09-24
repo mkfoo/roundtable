@@ -12,32 +12,33 @@ fn header_validation() {
     }
 
     let foo = Foo::default();
-    let h = Header::new(&foo, 10, 2000, 30);
+    let opts = Options::new(0, 1, 5);
+    let h = Header::new(&opts, &foo);
     let mut buf = Cursor::new(vec![]);
     h.write_out(&mut buf).unwrap();
     let mut new = Header::default();
     buf.rewind().unwrap();
     new.read_in(&mut buf).unwrap();
     assert_eq!(h, new);
-    new.validate(&foo).unwrap();
+    new.validate(&opts, &foo).unwrap();
 }
 
 #[test]
 fn time_errors() {
-    let dp_count = 10;
     let t_start = 1000;
     let t_step = 100;
+    let t_total = 1000;
     let mut buf = Cursor::new(vec![]);
-    let opts = Options::default()
+    let opts = Options::new(t_start, t_step, t_total)
         .fwd_skip_mode(FwdSkipMode::Zeroed)
         .max_fwd_skip(3);
-    let mut t = Table::new(opts, dp_count, t_start, t_step, &1_i64, buf).unwrap();
+    let mut t = Table::new(&opts, &1_i64, buf).unwrap();
     assert_eq!(t.insert(999, &1).unwrap_err(), Error::UpdateTooEarly);
     assert_eq!(t.insert(9999, &1).unwrap_err(), Error::UpdateTooLate);
     t.insert(1100, &100).unwrap();
     t.insert(1200, &200).unwrap();
     t.insert(1400, &400).unwrap();
-    assert_eq!(t.insert(1900, &900).unwrap_err(), Error::UpdateTooLate);
+    assert_eq!(t.insert(1900, &900).unwrap_err(), Error::MaxSkipExceeded);
     t.insert(1800, &800).unwrap();
     t.insert(2100, &210).unwrap();
     assert_eq!(t.get(999).unwrap_err(), Error::OutOfRangePast);
@@ -48,14 +49,14 @@ fn time_errors() {
 
 #[test]
 fn boundary_values() {
-    let dp_count = 10;
     let t_start = 0;
     let t_step = 100;
+    let t_total = 1000;
     let mut buf = Cursor::new(vec![]);
-    let opts = Options::default()
+    let opts = Options::new(t_start, t_step, t_total)
         .fwd_skip_mode(FwdSkipMode::Zeroed)
         .max_fwd_skip(7);
-    let mut t = Table::new(opts, dp_count, t_start, t_step, &0_i64, buf).unwrap();
+    let mut t = Table::new(&opts, &0_i64, buf).unwrap();
     t.insert(150, &1).unwrap();
     t.insert(250, &2).unwrap();
     t.insert(350, &3).unwrap();
@@ -77,12 +78,14 @@ fn boundary_values() {
 
 #[test]
 fn zeroed() {
-    let dp_count = 10;
     let t_start = 100;
     let t_step = 10;
+    let t_total = 100;
     let mut buf = Cursor::new(vec![]);
-    let opts = Options::default().fwd_skip_mode(FwdSkipMode::Zeroed);
-    let mut t = Table::new(opts, dp_count, t_start, t_step, &0_i32, buf).unwrap();
+    let opts = Options::new(t_start, t_step, t_total)
+        .max_fwd_skip(3)
+        .fwd_skip_mode(FwdSkipMode::Zeroed);
+    let mut t = Table::new(&opts, &0_i32, buf).unwrap();
     t.insert(110, &1).unwrap();
     t.insert(120, &2).unwrap();
     t.insert(150, &5).unwrap();
@@ -96,14 +99,14 @@ fn zeroed() {
 
 #[test]
 fn nearest() {
-    let dp_count = 30;
     let t_start = 0;
     let t_step = 10;
+    let t_total = 300;
     let mut buf = Cursor::new(vec![]);
-    let opts = Options::default()
+    let opts = Options::new(t_start, t_step, t_total)
         .fwd_skip_mode(FwdSkipMode::Nearest)
         .max_fwd_skip(8);
-    let mut t = Table::new(opts, dp_count, t_start, t_step, &0_i32, buf).unwrap();
+    let mut t = Table::new(&opts, &0_i32, buf).unwrap();
     t.insert(10, &1).unwrap();
     t.insert(30, &3).unwrap();
     t.insert(60, &6).unwrap();
