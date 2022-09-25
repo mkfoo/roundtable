@@ -11,6 +11,7 @@ pub struct Options {
     pub(crate) t_start: u64,
     pub(crate) t_step: u64,
     pub(crate) t_total: u64,
+    pub(crate) overwrite: bool,
     pub(crate) preallocate: bool,
     pub(crate) ignore_hash: bool,
     pub(crate) max_fwd_skip: u64,
@@ -23,6 +24,7 @@ impl Options {
             t_start: start_time,
             t_step: time_step,
             t_total: total_time,
+            overwrite: false,
             preallocate: false,
             ignore_hash: false,
             max_fwd_skip: 0,
@@ -56,5 +58,16 @@ impl Options {
             fwd_skip_mode: val,
             ..self
         }
+    }
+
+    pub fn overwrite(self, val: bool) -> Self {
+        Self {
+            overwrite: val,
+            ..self
+        }
+    }
+
+    pub(crate) fn dp_count(&self) -> u64 {
+        self.t_total.checked_div(self.t_step).unwrap_or(0_u64)
     }
 }

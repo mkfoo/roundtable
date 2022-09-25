@@ -1,7 +1,7 @@
 use super::prelude::*;
 use std::io::SeekFrom;
 
-const RTDB: u32 = 0x52544442;
+const RTDB: u32 = 0x42445452;
 
 super::datapoint! {
     pub struct Header {
@@ -21,7 +21,7 @@ impl Header {
             magic: RTDB,
             dp_size: dp.get_size(),
             dp_hash: dp.get_hash(),
-            dp_count: opts.t_total.checked_div(opts.t_step).unwrap_or(0_u64),
+            dp_count: opts.dp_count(),
             t_start: opts.t_start,
             t_step: opts.t_step,
             t_updated: opts.t_start,
@@ -63,8 +63,8 @@ impl Header {
         stream.seek(SeekFrom::Start(0)).map_err(Error::IoError)?;
 
         if self.get_earliest() > self.t_start {
-            return self.check_full_len(len)
-        } 
+            return self.check_full_len(len);
+        }
 
         self.check_partial_len(len)
     }
@@ -80,13 +80,17 @@ impl Header {
     fn check_partial_len(&self, len: u64) -> Result<()> {
         let dps = self.get_slot(self.t_updated) + 1;
 
-        if len < dps * self.dp_size || len > self.dp_count * self.dp_size + self.get_size() {
+        if len < dps * self.dp_size + self.get_size() {
+            return Err(Error::InvalidStreamLen);
+        }
+
+        if len > self.dp_count * self.dp_size + self.get_size() {
             return Err(Error::InvalidStreamLen);
         }
 
         Ok(())
     }
-     
+
     fn get_slot(&self, t_now: u64) -> u64 {
         let elapsed = t_now - self.t_start;
         let t_len = self.t_step * self.dp_count;
@@ -101,7 +105,7 @@ impl Header {
         let t1 = self
             .t_updated
             .saturating_sub(self.t_step * (self.dp_count - 1));
-        let t2 = t1 - t1 % self.t_step; 
+        let t2 = t1 - t1 % self.t_step;
 
         if t2 > self.t_start {
             t2
@@ -111,6 +115,7 @@ impl Header {
     }
 
     fn check_access_time(&self, t: u64) -> Result<()> {
+        println!("{} {}", t, self.t_updated);
         if t > self.t_updated {
             return Err(Error::OutOfRangeFuture);
         }

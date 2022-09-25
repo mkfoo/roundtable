@@ -1,6 +1,6 @@
 use roundtable::prelude::*;
 use roundtable::rtdb::{Header, Table};
-use std::io::{Cursor, Seek};
+use std::io::Cursor;
 
 #[test]
 fn header_validation() {
@@ -27,18 +27,25 @@ fn header_validation() {
 fn partial_load() {
     let buf = Cursor::new(vec![]);
     let opts = Options::new(0, 100, 12000);
-    let mut t = Table::new(&opts, &0_i128, buf).unwrap();
-    t.insert(100, &10000).unwrap();
-    t.insert(200, &20000).unwrap();
-    t.insert(300, &30000).unwrap();
-    assert_eq!(t.get(100).unwrap(), &10000);
-    assert_eq!(t.get(200).unwrap(), &20000);
-    assert_eq!(t.get(300).unwrap(), &30000);
+    let mut t = Table::new(&opts, &0_i16, buf).unwrap();
+    t.insert(100, &1000).unwrap();
+    t.insert(200, &2000).unwrap();
+    t.insert(300, &3000).unwrap();
+    assert_eq!(t.get(100).unwrap(), &1000);
+    assert_eq!(t.get(200).unwrap(), &2000);
+    assert_eq!(t.get(300).unwrap(), &3000);
     let buf2 = t.into_inner();
-    let mut t2 = Table::load(&opts, &0_i128, buf2).unwrap();
-    assert_eq!(t2.get(100).unwrap(), &10000);
-    assert_eq!(t2.get(200).unwrap(), &20000);
-    assert_eq!(t2.get(300).unwrap(), &30000);
+    let mut t2 = Table::load(&opts, &0_i16, buf2).unwrap();
+    assert_eq!(t2.get(100).unwrap(), &1000);
+    assert_eq!(t2.get(200).unwrap(), &2000);
+    assert_eq!(t2.get(300).unwrap(), &3000);
+    let mut v2 = t2.into_inner().into_inner();
+    v2.pop().unwrap();
+    let buf3 = Cursor::new(v2);
+    assert_eq!(
+        Table::load(&opts, &0_i16, buf3).unwrap_err(),
+        Error::InvalidStreamLen
+    );
 }
 
 #[test]
@@ -69,7 +76,10 @@ fn full_load() {
     let mut v2 = t2.into_inner().into_inner();
     v2.pop().unwrap();
     let buf3 = Cursor::new(v2);
-    assert_eq!(Table::load(&opts, &0_i32, buf3).unwrap_err(), Error::InvalidStreamLen);
+    assert_eq!(
+        Table::load(&opts, &0_i32, buf3).unwrap_err(),
+        Error::InvalidStreamLen
+    );
 }
 
 #[test]
@@ -77,7 +87,7 @@ fn time_errors() {
     let t_start = 1000;
     let t_step = 100;
     let t_total = 1000;
-    let mut buf = Cursor::new(vec![]);
+    let buf = Cursor::new(vec![]);
     let opts = Options::new(t_start, t_step, t_total)
         .fwd_skip_mode(FwdSkipMode::Zeroed)
         .max_fwd_skip(3);
@@ -92,6 +102,8 @@ fn time_errors() {
     t.insert(2100, &210).unwrap();
     assert_eq!(t.get(999).unwrap_err(), Error::OutOfRangePast);
     assert_eq!(t.get(1100).unwrap_err(), Error::OutOfRangePast);
+    assert_eq!(t.get(1199).unwrap_err(), Error::OutOfRangePast);
+    assert_eq!(t.get(1200).unwrap(), &200);
     assert_eq!(t.get(2100).unwrap(), &210);
     assert_eq!(t.get(2101).unwrap_err(), Error::OutOfRangeFuture);
 }
@@ -101,7 +113,7 @@ fn boundary_values() {
     let t_start = 0;
     let t_step = 100;
     let t_total = 1000;
-    let mut buf = Cursor::new(vec![]);
+    let buf = Cursor::new(vec![]);
     let opts = Options::new(t_start, t_step, t_total)
         .fwd_skip_mode(FwdSkipMode::Zeroed)
         .max_fwd_skip(7);
@@ -130,7 +142,7 @@ fn zeroed() {
     let t_start = 100;
     let t_step = 10;
     let t_total = 100;
-    let mut buf = Cursor::new(vec![]);
+    let buf = Cursor::new(vec![]);
     let opts = Options::new(t_start, t_step, t_total)
         .max_fwd_skip(3)
         .fwd_skip_mode(FwdSkipMode::Zeroed);
@@ -151,7 +163,7 @@ fn nearest() {
     let t_start = 0;
     let t_step = 10;
     let t_total = 300;
-    let mut buf = Cursor::new(vec![]);
+    let buf = Cursor::new(vec![]);
     let opts = Options::new(t_start, t_step, t_total)
         .fwd_skip_mode(FwdSkipMode::Nearest)
         .max_fwd_skip(8);

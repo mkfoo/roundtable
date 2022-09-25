@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 use roundtable::prelude::*;
-use std::io::{Cursor, Seek};
+use std::io::Cursor;
 
 #[test]
 fn primitives() {
