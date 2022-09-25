@@ -26,5 +26,5 @@ pub fn from_file<T: DataPoint + Copy + Default, P: AsRef<Path>>(
         .write(true)
         .open(path)
         .map_err(Error::IoError)?;
-    Table::new(&opts, &dp, file)
+    Table::load(&opts, &dp, file)
 }

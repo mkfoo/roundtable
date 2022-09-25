@@ -27,6 +27,7 @@ pub fn in_file<T: DataPoint + Copy + Default, P: AsRef<Path>>(
         OpenOptions::new()
             .read(true)
             .write(true)
+            .create(true)
             .truncate(true)
             .open(path)
     } else {
