@@ -1,5 +1,7 @@
 use roundtable as rt;
+use rt::error::Error;
 use rt::prelude::*;
+use rt::Result;
 use std::collections::BTreeMap;
 
 #[test]

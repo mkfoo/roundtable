@@ -1,4 +1,6 @@
+use roundtable::error::Error;
 use roundtable::prelude::*;
+use roundtable::Result;
 
 #[test]
 fn arrays_and_structs_are_the_same() {

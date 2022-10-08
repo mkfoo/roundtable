@@ -1,4 +1,6 @@
+use super::error::Error;
 use super::prelude::*;
+use super::Result;
 use std::fs::{File, OpenOptions};
 use std::io::Cursor;
 use std::path::Path;

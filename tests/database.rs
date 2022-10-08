@@ -1,5 +1,7 @@
+use roundtable::error::Error;
 use roundtable::prelude::*;
 use roundtable::rtdb::{Header, Table};
+use roundtable::Result;
 use std::io::Cursor;
 
 #[test]
@@ -245,7 +247,7 @@ fn iter() {
     }
 
     let mut j = 5_u64;
-    
+
     for (t, v) in tab.iter().unwrap() {
         assert_eq!(t, t_start + t_step * j);
         assert_eq!(v, j);

@@ -27,7 +27,7 @@ impl Options {
             overwrite: false,
             preallocate: false,
             ignore_hash: false,
-            max_fwd_skip: 0,
+            max_fwd_skip: 2,
             fwd_skip_mode: FwdSkipMode::Nearest,
         }
     }

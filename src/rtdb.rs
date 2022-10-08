@@ -1,4 +1,6 @@
+use super::error::Error;
 use super::prelude::*;
+use super::Result;
 use std::io::SeekFrom;
 
 const RTDB: u32 = 0x42445452;
@@ -120,8 +122,8 @@ impl Header {
     }
 
     fn get_delta(&self, s: u64, e: u64) -> u64 {
-        let start = self.round_down(s); 
-        let end = self.round_down(e); 
+        let start = self.round_down(s);
+        let end = self.round_down(e);
         end / self.t_step - start / self.t_step
     }
 
@@ -196,7 +198,7 @@ where
         if t_now <= self.header.t_updated {
             return Err(Error::UpdateTooEarly);
         }
-        
+
         let delta = self.header.get_delta(self.header.t_updated, t_now);
 
         match delta {
@@ -353,7 +355,7 @@ where
     }
 }
 
-pub struct Iter<'a, T, U> 
+pub struct Iter<'a, T, U>
 where
     T: DataPoint + Copy + Default,
     U: Read + Write + Seek + Sized,
@@ -363,7 +365,7 @@ where
     end: u64,
 }
 
-impl<'a, T, U> Iterator for Iter<'a, T, U> 
+impl<'a, T, U> Iterator for Iter<'a, T, U>
 where
     T: DataPoint + Copy + Default,
     U: Read + Write + Seek + Sized,
