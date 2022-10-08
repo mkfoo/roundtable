@@ -3,6 +3,14 @@ name = "roundtable"
 version = "0.0.0"
 authors = ["mkfoo"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/mkfoo/roundtable"
 
 [lib]
 crate-type = ["lib"]
+
+[dev-dependencies]
+plotters = { version = "=0.3.4", default_features = false, features = ["svg_backend", "line_series"] }
+
+[[example]]
+name = "meminfo"
