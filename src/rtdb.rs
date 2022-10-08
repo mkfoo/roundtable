@@ -62,7 +62,7 @@ impl Header {
         let len = stream.seek(SeekFrom::End(0)).map_err(Error::IoError)?;
         stream.seek(SeekFrom::Start(0)).map_err(Error::IoError)?;
 
-        if self.get_earliest() > self.t_start {
+        if self.get_first() > self.t_start {
             return self.check_full_len(len);
         }
 
@@ -71,6 +71,7 @@ impl Header {
 
     fn check_full_len(&self, len: u64) -> Result<()> {
         if len != self.dp_count * self.dp_size + self.get_size() {
+            println!("full len {} {}", len, self.dp_count * self.dp_size);
             return Err(Error::InvalidStreamLen);
         }
 
@@ -91,36 +92,45 @@ impl Header {
         Ok(())
     }
 
+    fn round_down(&self, t: u64) -> u64 {
+        let d = t - self.t_start;
+        self.t_start + d - d % self.t_step
+    }
+
     fn get_slot(&self, t_now: u64) -> u64 {
         let elapsed = t_now - self.t_start;
-        let t_len = self.t_step * self.dp_count;
-        elapsed % t_len / self.t_step
+        let t_total = self.t_step * self.dp_count;
+        elapsed % t_total / self.t_step
     }
 
     fn get_offset(&self, slot: u64) -> u64 {
         slot * self.dp_size + self.get_size()
     }
 
-    fn get_earliest(&self) -> u64 {
-        let t1 = self
-            .t_updated
-            .saturating_sub(self.t_step * (self.dp_count - 1));
-        let t2 = t1 - t1 % self.t_step;
+    fn get_first(&self) -> u64 {
+        let upd = self.round_down(self.t_updated);
+        let elapsed = upd - self.t_start;
+        let t_total = self.t_step * self.dp_count;
 
-        if t2 > self.t_start {
-            t2
-        } else {
-            self.t_start
+        if elapsed < t_total {
+            return self.t_start;
         }
+
+        upd - (t_total - self.t_step)
+    }
+
+    fn get_delta(&self, s: u64, e: u64) -> u64 {
+        let start = self.round_down(s); 
+        let end = self.round_down(e); 
+        end / self.t_step - start / self.t_step
     }
 
     fn check_access_time(&self, t: u64) -> Result<()> {
-        println!("{} {}", t, self.t_updated);
         if t > self.t_updated {
             return Err(Error::OutOfRangeFuture);
         }
 
-        if t < self.get_earliest() {
+        if t < self.get_first() {
             return Err(Error::OutOfRangePast);
         }
 
@@ -183,10 +193,13 @@ where
     }
 
     pub fn insert(&mut self, t_now: u64, dp: &T) -> Result<()> {
-        let upd = self.header.t_updated / self.header.t_step;
-        let now = t_now / self.header.t_step;
+        if t_now <= self.header.t_updated {
+            return Err(Error::UpdateTooEarly);
+        }
+        
+        let delta = self.header.get_delta(self.header.t_updated, t_now);
 
-        match now.saturating_sub(upd) {
+        match delta {
             0 => return Err(Error::UpdateTooEarly),
             1 => {
                 self.seek_to(self.header.t_updated)?;
@@ -205,6 +218,46 @@ where
         self.seek_to(t)?;
         self.read_in()?;
         Ok(&self.buf)
+    }
+
+    pub fn first(&mut self) -> Result<(u64, &T)> {
+        let t = self.header.get_first();
+        self.get(t).map(|v| (t, v))
+    }
+
+    pub fn last(&mut self) -> Result<(u64, &T)> {
+        let t = self.header.t_updated;
+        self.get(t).map(|v| (t, v))
+    }
+
+    pub fn iter(&mut self) -> Result<Iter<T, U>> {
+        let now = self.header.get_first();
+        let end = self.header.round_down(self.header.t_updated);
+        self.seek_to(now)?;
+
+        Ok(Iter {
+            table: self,
+            now,
+            end,
+        })
+    }
+
+    pub fn range(&mut self, start: u64, end: u64) -> Result<Iter<T, U>> {
+        self.header.check_access_time(start)?;
+        self.header.check_access_time(end)?;
+        let now = self.header.round_down(start);
+        let end = self.header.round_down(end);
+        self.seek_to(now)?;
+
+        Ok(Iter {
+            table: self,
+            now,
+            end,
+        })
+    }
+
+    pub fn into_inner(self) -> U {
+        self.data
     }
 
     fn skip_fwd(&mut self, skip: u64, dp: &T) -> Result<()> {
@@ -246,7 +299,7 @@ where
         self.write_out_buf()
     }
 
-    fn increment_slot(&mut self) -> Result<()> {
+    fn increment(&mut self) -> Result<()> {
         self.slot = (self.slot + 1) % self.header.dp_count;
 
         if self.slot == 0 {
@@ -273,22 +326,22 @@ where
         self.data
             .seek(SeekFrom::Current(ioff))
             .map_err(Error::IoError)?;
-        self.increment_slot()
+        self.increment()
     }
 
     fn write_out<D: DataPoint>(&mut self, dp: &D) -> Result<()> {
         dp.write_out(&mut self.data).map_err(Error::IoError)?;
-        self.increment_slot()
+        self.increment()
     }
 
     fn write_out_buf(&mut self) -> Result<()> {
         self.buf.write_out(&mut self.data).map_err(Error::IoError)?;
-        self.increment_slot()
+        self.increment()
     }
 
     fn read_in(&mut self) -> Result<()> {
         self.buf.read_in(&mut self.data).map_err(Error::IoError)?;
-        self.increment_slot()
+        self.increment()
     }
 
     fn update_header(&mut self, t_now: u64) -> Result<()> {
@@ -298,8 +351,33 @@ where
         self.header.t_updated = t_now;
         Ok(())
     }
+}
 
-    pub fn into_inner(self) -> U {
-        self.data
+pub struct Iter<'a, T, U> 
+where
+    T: DataPoint + Copy + Default,
+    U: Read + Write + Seek + Sized,
+{
+    table: &'a mut Table<T, U>,
+    now: u64,
+    end: u64,
+}
+
+impl<'a, T, U> Iterator for Iter<'a, T, U> 
+where
+    T: DataPoint + Copy + Default,
+    U: Read + Write + Seek + Sized,
+{
+    type Item = (u64, T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.now <= self.end {
+            let t = self.now;
+            self.now += self.table.header.t_step;
+            self.table.read_in().ok()?;
+            Some((t, self.table.buf))
+        } else {
+            None
+        }
     }
 }

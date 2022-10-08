@@ -100,6 +100,7 @@ fn time_errors() {
     assert_eq!(t.insert(1900, &900).unwrap_err(), Error::MaxSkipExceeded);
     t.insert(1800, &800).unwrap();
     t.insert(2100, &210).unwrap();
+    println!("lsdj");
     assert_eq!(t.get(999).unwrap_err(), Error::OutOfRangePast);
     assert_eq!(t.get(1100).unwrap_err(), Error::OutOfRangePast);
     assert_eq!(t.get(1199).unwrap_err(), Error::OutOfRangePast);
@@ -141,28 +142,39 @@ fn boundary_values() {
 fn zeroed() {
     let t_start = 100;
     let t_step = 10;
-    let t_total = 100;
+    let t_total = 500;
     let buf = Cursor::new(vec![]);
     let opts = Options::new(t_start, t_step, t_total)
-        .max_fwd_skip(3)
+        .max_fwd_skip(8)
         .fwd_skip_mode(FwdSkipMode::Zeroed);
     let mut t = Table::new(&opts, &0_i32, buf).unwrap();
     t.insert(110, &1).unwrap();
     t.insert(120, &2).unwrap();
     t.insert(150, &5).unwrap();
+    t.insert(190, &9).unwrap();
+    t.insert(240, &14).unwrap();
     assert_eq!(t.get(100).unwrap(), &0);
     assert_eq!(t.get(110).unwrap(), &1);
     assert_eq!(t.get(120).unwrap(), &2);
     assert_eq!(t.get(130).unwrap(), &0);
     assert_eq!(t.get(140).unwrap(), &0);
     assert_eq!(t.get(150).unwrap(), &5);
+    assert_eq!(t.get(160).unwrap(), &0);
+    assert_eq!(t.get(170).unwrap(), &0);
+    assert_eq!(t.get(180).unwrap(), &0);
+    assert_eq!(t.get(190).unwrap(), &9);
+    assert_eq!(t.get(200).unwrap(), &0);
+    assert_eq!(t.get(210).unwrap(), &0);
+    assert_eq!(t.get(220).unwrap(), &0);
+    assert_eq!(t.get(230).unwrap(), &0);
+    assert_eq!(t.get(240).unwrap(), &14);
 }
 
 #[test]
 fn nearest() {
     let t_start = 0;
     let t_step = 10;
-    let t_total = 300;
+    let t_total = 160;
     let buf = Cursor::new(vec![]);
     let opts = Options::new(t_start, t_step, t_total)
         .fwd_skip_mode(FwdSkipMode::Nearest)
@@ -172,7 +184,7 @@ fn nearest() {
     t.insert(30, &3).unwrap();
     t.insert(60, &6).unwrap();
     t.insert(100, &10).unwrap();
-    t.insert(150, &15).unwrap();
+    t.insert(140, &14).unwrap();
     assert_eq!(t.get(10).unwrap(), &1);
     assert_eq!(t.get(20).unwrap(), &3);
     assert_eq!(t.get(30).unwrap(), &3);
@@ -184,8 +196,81 @@ fn nearest() {
     assert_eq!(t.get(90).unwrap(), &10);
     assert_eq!(t.get(100).unwrap(), &10);
     assert_eq!(t.get(110).unwrap(), &10);
-    assert_eq!(t.get(120).unwrap(), &10);
-    assert_eq!(t.get(130).unwrap(), &15);
-    assert_eq!(t.get(140).unwrap(), &15);
-    assert_eq!(t.get(150).unwrap(), &15);
+    assert_eq!(t.get(120).unwrap(), &14);
+    assert_eq!(t.get(130).unwrap(), &14);
+    assert_eq!(t.get(140).unwrap(), &14);
+}
+
+#[test]
+fn first_and_last() {
+    let t_start = 42498729;
+    let t_step = 193;
+    let t_total = 1930;
+    let buf = Cursor::new(vec![]);
+    let opts = Options::new(t_start, t_step, t_total)
+        .max_fwd_skip(4)
+        .fwd_skip_mode(FwdSkipMode::Zeroed);
+    let mut t = Table::new(&opts, &0_i32, buf).unwrap();
+    t.insert(t_start + 193, &1).unwrap();
+    t.insert(t_start + 386, &2).unwrap();
+    t.insert(t_start + 579, &3).unwrap();
+    assert_eq!(t.first().unwrap(), (t_start, &0));
+    assert_eq!(t.last().unwrap(), (t_start + 579, &3));
+    t.insert(t_start + 1678, &8).unwrap();
+    t.insert(t_start + 1737, &9).unwrap();
+    t.insert(t_start + 1930, &10).unwrap();
+    assert_eq!(t.first().unwrap(), (t_start + 193, &1));
+    assert_eq!(t.last().unwrap(), (t_start + 1930, &10));
+    assert_eq!(t.get(t_start + 195).unwrap(), &1);
+    assert_eq!(t.get(t_start + 579).unwrap(), &3);
+    assert_eq!(t.get(t_start + 1678).unwrap(), &8);
+    assert_eq!(t.get(t_start + 1737).unwrap(), &9);
+    assert_eq!(t.get(t_start + 1930).unwrap(), &10);
+    t.insert(t_start + 2123, &11).unwrap();
+    assert_eq!(t.first().unwrap(), (t_start + 386, &2));
+    assert_eq!(t.last().unwrap(), (t_start + 2123, &11));
+}
+
+#[test]
+fn iter() {
+    let t_start = 1665232907;
+    let t_step = 119;
+    let t_total = 11900;
+    let buf = Cursor::new(vec![]);
+    let opts = Options::new(t_start, t_step, t_total);
+    let mut tab = Table::new(&opts, &0_u64, buf).unwrap();
+
+    for i in 1..105_u64 {
+        tab.insert(t_start + t_step * i, &i).unwrap();
+    }
+
+    let mut j = 5_u64;
+    
+    for (t, v) in tab.iter().unwrap() {
+        assert_eq!(t, t_start + t_step * j);
+        assert_eq!(v, j);
+        j += 1;
+    }
+}
+
+#[test]
+fn range() {
+    let t_start = 1665232907;
+    let t_step = 119;
+    let t_total = 11900;
+    let buf = Cursor::new(vec![]);
+    let opts = Options::new(t_start, t_step, t_total);
+    let mut tab = Table::new(&opts, &0_u64, buf).unwrap();
+
+    for i in 1..105_u64 {
+        tab.insert(t_start + t_step * i, &i).unwrap();
+    }
+
+    let mut j = 20_u64;
+
+    for (t, v) in tab.range(1665235287, 1665239333).unwrap() {
+        assert_eq!(t, t_start + t_step * j);
+        assert_eq!(v, j);
+        j += 1;
+    }
 }
