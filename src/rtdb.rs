@@ -149,9 +149,10 @@ where
     max_skip: u64,
     skip_mode: FwdSkipMode,
     header: Header,
-    data: U,
-    buf: T,
     slot: u64,
+    data: U,
+    dp0: T,
+    dp1: T,
 }
 
 impl<T, U> Table<T, U>
@@ -171,9 +172,10 @@ where
             max_skip: opts.max_fwd_skip,
             skip_mode: opts.fwd_skip_mode,
             header,
-            data,
-            buf: T::default(),
             slot: 0,
+            data,
+            dp0: T::default(),
+            dp1: T::default(),
         })
     }
 
@@ -188,9 +190,10 @@ where
             max_skip: opts.max_fwd_skip,
             skip_mode: opts.fwd_skip_mode,
             header,
-            data,
-            buf: T::default(),
             slot: 0,
+            data,
+            dp0: T::default(),
+            dp1: T::default(),
         })
     }
 
@@ -207,7 +210,7 @@ where
                 self.seek_to(self.header.t_updated)?;
                 self.seek_fwd()?;
             }
-            n if n < self.header.dp_count => self.skip_fwd(n - 1, dp)?,
+            n if n < self.header.dp_count => self.skip_fwd(n, dp)?,
             _ => return Err(Error::UpdateTooLate),
         }
 
@@ -219,7 +222,7 @@ where
         self.header.check_access_time(t)?;
         self.seek_to(t)?;
         self.read_in()?;
-        Ok(&self.buf)
+        Ok(&self.dp0)
     }
 
     pub fn first(&mut self) -> Result<(u64, &T)> {
@@ -262,21 +265,21 @@ where
         self.data
     }
 
-    fn skip_fwd(&mut self, skip: u64, dp: &T) -> Result<()> {
+    fn skip_fwd(&mut self, skip: u64, next_dp: &T) -> Result<()> {
         use FwdSkipMode::*;
 
-        if skip > self.max_skip {
+        if skip > self.max_skip + 1 {
             return Err(Error::MaxSkipExceeded);
         }
 
         self.seek_to(self.header.t_updated)?;
         self.read_in()?;
 
-        for i in 0..skip {
+        for i in 1..skip {
             match self.skip_mode {
                 DoNothing => self.seek_fwd()?,
-                Linear => self.skip_linear(i, skip, dp)?,
-                Nearest => self.skip_nearest(i, skip, dp)?,
+                Linear => self.skip_linear(i, skip, next_dp)?,
+                Nearest => self.skip_nearest(i, skip, next_dp)?,
                 Zeroed => self.skip_default()?,
             }
         }
@@ -284,12 +287,14 @@ where
         Ok(())
     }
 
-    fn skip_linear(&mut self, _i: u64, _skip: u64, _dp: &T) -> Result<()> {
-        todo!();
+    fn skip_linear(&mut self, i: u64, skip: u64, next_dp: &T) -> Result<()> {
+        self.dp1.lerp(&self.dp0, next_dp, i, skip);
+        self.dp1.write_out(&mut self.data).map_err(Error::IoError)?;
+        self.increment()
     }
 
     fn skip_nearest(&mut self, i: u64, skip: u64, dp: &T) -> Result<()> {
-        if i < skip / 2 {
+        if i <= (skip - 1) / 2 {
             self.write_out_buf()
         } else {
             self.write_out(dp)
@@ -297,7 +302,7 @@ where
     }
 
     fn skip_default(&mut self) -> Result<()> {
-        self.buf = T::default();
+        self.dp0 = T::default();
         self.write_out_buf()
     }
 
@@ -337,12 +342,12 @@ where
     }
 
     fn write_out_buf(&mut self) -> Result<()> {
-        self.buf.write_out(&mut self.data).map_err(Error::IoError)?;
+        self.dp0.write_out(&mut self.data).map_err(Error::IoError)?;
         self.increment()
     }
 
     fn read_in(&mut self) -> Result<()> {
-        self.buf.read_in(&mut self.data).map_err(Error::IoError)?;
+        self.dp0.read_in(&mut self.data).map_err(Error::IoError)?;
         self.increment()
     }
 
@@ -377,7 +382,7 @@ where
             let t = self.now;
             self.now += self.table.header.t_step;
             self.table.read_in().ok()?;
-            Some((t, self.table.buf))
+            Some((t, self.table.dp0))
         } else {
             None
         }

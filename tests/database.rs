@@ -1,7 +1,6 @@
 use roundtable::error::Error;
 use roundtable::prelude::*;
 use roundtable::rtdb::{Header, Table};
-use roundtable::Result;
 use std::io::Cursor;
 
 #[test]
@@ -201,6 +200,131 @@ fn nearest() {
     assert_eq!(t.get(120).unwrap(), &14);
     assert_eq!(t.get(130).unwrap(), &14);
     assert_eq!(t.get(140).unwrap(), &14);
+}
+
+#[test]
+fn lerp_int() {
+    let t_start = 0;
+    let t_step = 10;
+    let t_total = 160;
+    let buf = Cursor::new(vec![]);
+    let opts = Options::new(t_start, t_step, t_total)
+        .fwd_skip_mode(FwdSkipMode::Linear)
+        .max_fwd_skip(8);
+    let mut t = Table::new(&opts, &0_i32, buf).unwrap();
+    t.insert(10, &10).unwrap();
+    t.insert(40, &40).unwrap();
+    t.insert(80, &60).unwrap();
+    assert_eq!(t.get(10).unwrap(), &10);
+    assert_eq!(t.get(20).unwrap(), &20);
+    assert_eq!(t.get(30).unwrap(), &30);
+    assert_eq!(t.get(40).unwrap(), &40);
+    assert_eq!(t.get(50).unwrap(), &45);
+    assert_eq!(t.get(60).unwrap(), &50);
+    assert_eq!(t.get(70).unwrap(), &55);
+    assert_eq!(t.get(80).unwrap(), &60);
+}
+
+#[test]
+fn lerp_float() {
+    let t_start = 0;
+    let t_step = 10;
+    let t_total = 160;
+    let buf = Cursor::new(vec![]);
+    let opts = Options::new(t_start, t_step, t_total)
+        .fwd_skip_mode(FwdSkipMode::Linear)
+        .max_fwd_skip(8);
+    let mut t = Table::new(&opts, &0.0, buf).unwrap();
+    t.insert(40, &1.0).unwrap();
+    t.insert(80, &3.0).unwrap();
+    assert_eq!(t.get(0).unwrap(), &0.0);
+    assert_eq!(t.get(10).unwrap(), &0.25);
+    assert_eq!(t.get(20).unwrap(), &0.50);
+    assert_eq!(t.get(30).unwrap(), &0.75);
+    assert_eq!(t.get(40).unwrap(), &1.0);
+    assert_eq!(t.get(50).unwrap(), &1.5);
+    assert_eq!(t.get(60).unwrap(), &2.0);
+    assert_eq!(t.get(70).unwrap(), &2.5);
+    assert_eq!(t.get(80).unwrap(), &3.0);
+}
+
+#[test]
+fn lerp_array() {
+    let t_start = 0;
+    let t_step = 10;
+    let t_total = 160;
+    let buf = Cursor::new(vec![]);
+    let opts = Options::new(t_start, t_step, t_total)
+        .fwd_skip_mode(FwdSkipMode::Linear)
+        .max_fwd_skip(8);
+    let mut t = Table::new(&opts, &[1.0, 2.0, 3.0], buf).unwrap();
+    t.insert(40, &[3.0, 4.0, 6.0]).unwrap();
+    assert_eq!(t.get(0).unwrap(), &[1.0, 2.0, 3.0]);
+    assert_eq!(t.get(10).unwrap(), &[1.5, 2.5, 3.75]);
+    assert_eq!(t.get(20).unwrap(), &[2.0, 3.0, 4.5]);
+    assert_eq!(t.get(30).unwrap(), &[2.5, 3.5, 5.25]);
+    assert_eq!(t.get(40).unwrap(), &[3.0, 4.0, 6.0]);
+}
+
+#[test]
+fn lerp_struct() {
+    roundtable::datapoint! {
+        struct Foo {
+            a: i32,
+            b: [f32; 2],
+        }
+    }
+    let t_start = 0;
+    let t_step = 10;
+    let t_total = 160;
+    let buf = Cursor::new(vec![]);
+    let opts = Options::new(t_start, t_step, t_total)
+        .fwd_skip_mode(FwdSkipMode::Linear)
+        .max_fwd_skip(8);
+    let mut t = Table::new(&opts, &Foo::default(), buf).unwrap();
+    t.insert(
+        40,
+        &Foo {
+            a: 4,
+            b: [2.0, 3.0],
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        t.get(0).unwrap(),
+        &Foo {
+            a: 0,
+            b: [0.0, 0.0]
+        }
+    );
+    assert_eq!(
+        t.get(10).unwrap(),
+        &Foo {
+            a: 1,
+            b: [0.5, 0.75]
+        }
+    );
+    assert_eq!(
+        t.get(20).unwrap(),
+        &Foo {
+            a: 2,
+            b: [1.0, 1.5]
+        }
+    );
+    assert_eq!(
+        t.get(30).unwrap(),
+        &Foo {
+            a: 3,
+            b: [1.5, 2.25]
+        }
+    );
+    assert_eq!(
+        t.get(40).unwrap(),
+        &Foo {
+            a: 4,
+            b: [2.0, 3.0]
+        }
+    );
 }
 
 #[test]

@@ -5,6 +5,7 @@ pub trait DataPoint {
     fn get_hash(&self) -> u64;
     fn write_out<W: Write + Seek>(&self, writer: &mut W) -> std::io::Result<()>;
     fn read_in<R: Read + Seek>(&mut self, reader: &mut R) -> std::io::Result<()>;
+    fn lerp(&mut self, v0: &Self, v1: &Self, numer: u64, denom: u64);
 }
 
 #[macro_export]
@@ -27,6 +28,7 @@ macro_rules! _internal_struct_impl {
             $crate::_internal_impl_get_hash!($block);
             $crate::_internal_impl_write_out!($block);
             $crate::_internal_impl_read_in!($block);
+            $crate::_internal_impl_lerp!($block);
         }
     };
 }
@@ -79,6 +81,17 @@ macro_rules! _internal_impl_read_in {
     };
 }
 
+#[macro_export]
+macro_rules! _internal_impl_lerp {
+    ({$($field:ident : $type:ty,)*}) => {
+        fn lerp(&mut self, v0: &Self, v1: &Self, numer: u64, denom: u64) {
+            $(
+                self.$field.lerp(&v0.$field, &v1.$field, numer, denom);
+            )*
+        }
+    };
+}
+
 macro_rules! _internal_datapoint_impl {
     ($impl_type:ty, $seed:literal) => {
         impl DataPoint for $impl_type {
@@ -99,6 +112,17 @@ macro_rules! _internal_datapoint_impl {
                 reader.read_exact(&mut buf)?;
                 *self = Self::from_le_bytes(buf);
                 Ok(())
+            }
+
+            fn lerp(&mut self, v0: &Self, v1: &Self, numer: u64, denom: u64) {
+                let n = numer as $impl_type;
+                let d = denom as $impl_type;
+
+                if v0 < v1 {
+                    *self = *v0 + n * ((*v1 - *v0) / d);
+                } else {
+                    *self = *v0 - n * ((*v0 - *v1) / d);
+                }
             }
         }
 
@@ -129,6 +153,12 @@ macro_rules! _internal_array_impl {
                     i.read_in(reader)?;
                 }
                 Ok(())
+            }
+
+            fn lerp(&mut self, v0: &Self, v1: &Self, numer: u64, denom: u64) {
+                for (i, v) in self.iter_mut().enumerate() {
+                    v.lerp(&v0[i], &v1[i], numer, denom);
+                }
             }
         }
     };
